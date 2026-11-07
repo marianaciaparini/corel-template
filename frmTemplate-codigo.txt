@@ -1,0 +1,247 @@
+' Corel Template - code for the UserForm "frmTemplate"
+' Paste this whole text into the code window of an EMPTY UserForm named frmTemplate
+' (Ctrl+A, Delete first: the code window must be completely empty).
+' All fields and buttons are created by this code; nothing needs to be drawn on the form.
+Option Explicit
+
+Private WithEvents cboModo As MSForms.ComboBox
+Private WithEvents cboAncH As MSForms.ComboBox
+Private WithEvents cboAncV As MSForms.ComboBox
+Private WithEvents txtX As MSForms.TextBox
+Private WithEvents txtY As MSForms.TextBox
+Private WithEvents txtW As MSForms.TextBox
+Private WithEvents txtH As MSForms.TextBox
+Private WithEvents chkTravar As MSForms.CheckBox
+Private WithEvents btnOK As MSForms.CommandButton
+Private WithEvents btnCancelar As MSForms.CommandButton
+Private lblInfo As MSForms.Label
+
+Private mCodigos() As String  ' mode codes, same order as cboModo
+Private mRazao As Double      ' height / width of the reference image
+Private mAtualizando As Boolean
+Private mMestre As String     ' "W" or "H": last edited field
+Private mEx(3) As Double      ' example image X, Y, W, H
+Private mMan(3) As Double     ' last manual X, Y, W, H
+
+Public OK As Boolean
+Public ValX As Double, ValY As Double, ValW As Double, ValH As Double
+Public Travado As Boolean
+
+Public Property Get Mestre() As String
+    Mestre = mMestre
+End Property
+
+Public Property Get Modo() As String
+    Modo = mCodigos(cboModo.ListIndex)
+End Property
+
+Public Property Get AncoraH() As Long
+    AncoraH = cboAncH.ListIndex
+End Property
+
+Public Property Get AncoraV() As Long
+    AncoraV = cboAncV.ListIndex
+End Property
+
+Private Sub UserForm_Initialize()
+    Me.Caption = T("Nova copia com imagem", "New copy with image")
+    Me.Width = 270
+    Me.Height = 318
+    Rotulo T("Encaixe:", "Fit:"), 12, 12, 60
+    Set cboModo = Lista("cboModo", 76, 10, 176)
+    Rotulo T("Ancora:", "Anchor:"), 12, 40, 60
+    Set cboAncH = Lista("cboAncH", 76, 38, 84)
+    Set cboAncV = Lista("cboAncV", 168, 38, 84)
+    cboAncH.AddItem T("Esquerda", "Left")
+    cboAncH.AddItem T("Centro", "Centre")
+    cboAncH.AddItem T("Direita", "Right")
+    cboAncV.AddItem T("Topo", "Top")
+    cboAncV.AddItem T("Terco superior", "Upper third")
+    cboAncV.AddItem T("Centro", "Centre")
+    cboAncV.AddItem T("Base", "Bottom")
+
+    Rotulo T("Posicao (centro do objeto, mm)", "Position (object centre, mm)"), 12, 70, 230
+    Rotulo "X:", 12, 92, 20:  Set txtX = Campo("txtX", 34, 90)
+    Rotulo "Y:", 134, 92, 20: Set txtY = Campo("txtY", 156, 90)
+    Rotulo T("Tamanho (mm)", "Size (mm)"), 12, 120, 230
+    Rotulo T("L:", "W:"), 12, 142, 20: Set txtW = Campo("txtW", 34, 140)
+    Rotulo T("A:", "H:"), 134, 142, 20: Set txtH = Campo("txtH", 156, 140)
+    Set chkTravar = Me.Controls.Add("Forms.CheckBox.1", "chkTravar")
+    With chkTravar
+        .Caption = T("Manter proporcao", "Keep proportions")
+        .Left = 12: .Top = 166: .Width = 200: .Height = 18
+    End With
+    Set lblInfo = Me.Controls.Add("Forms.Label.1", "lblInfo")
+    With lblInfo
+        .Left = 12: .Top = 192: .Width = 240: .Height = 50
+        .ForeColor = &H808080
+    End With
+    Set btnOK = Me.Controls.Add("Forms.CommandButton.1", "btnOK")
+    With btnOK
+        .Caption = "OK": .Left = 82: .Top = 250: .Width = 80: .Height = 24
+        .Default = True
+    End With
+    Set btnCancelar = Me.Controls.Add("Forms.CommandButton.1", "btnCancelar")
+    With btnCancelar
+        .Caption = T("Cancelar", "Cancel"): .Left = 172: .Top = 250: .Width = 80: .Height = 24
+        .Cancel = True
+    End With
+End Sub
+
+Public Sub Preparar(modoIni As String, temExemplo As Boolean, _
+                    exX As Double, exY As Double, exW As Double, exH As Double, _
+                    manX As Double, manY As Double, manW As Double, manH As Double, _
+                    travar As Boolean, razao As Double, mestreIni As String, _
+                    ancH As Long, ancV As Long, info As String)
+    Dim n As Long, k As Long, escolhido As Long
+    mAtualizando = True
+    mRazao = razao
+    mMestre = mestreIni
+    mEx(0) = exX: mEx(1) = exY: mEx(2) = exW: mEx(3) = exH
+    mMan(0) = manX: mMan(1) = manY: mMan(2) = manW: mMan(3) = manH
+
+    n = IIf(temExemplo, 4, 3)
+    ReDim mCodigos(n - 1)
+    mCodigos(0) = "FILL": cboModo.AddItem T("Preencher (corta o excesso)", "Fill (crops the excess)")
+    mCodigos(1) = "FIT":  cboModo.AddItem T("Caber (imagem inteira)", "Fit (whole image)")
+    k = 2
+    If temExemplo Then
+        mCodigos(k) = "EXAMPLE": cboModo.AddItem T("Igual a imagem de exemplo", "Same as example image")
+        k = k + 1
+    End If
+    mCodigos(k) = "MANUAL": cboModo.AddItem T("Manual (X, Y, L, A)", "Manual (X, Y, W, H)")
+
+    escolhido = 0
+    For k = 0 To n - 1
+        If mCodigos(k) = modoIni Then escolhido = k
+    Next k
+    cboModo.ListIndex = escolhido
+    cboAncH.ListIndex = IIf(ancH >= 0 And ancH <= 2, ancH, 1)
+    cboAncV.ListIndex = IIf(ancV >= 0 And ancV <= 3, ancV, 2)
+    chkTravar.Value = travar
+    lblInfo.Caption = info
+    mAtualizando = False
+    AplicarModo
+End Sub
+
+' ---- mode switch: fills the fields and enables only what the mode uses ----
+Private Sub cboModo_Change()
+    If mAtualizando Then Exit Sub
+    AplicarModo
+End Sub
+
+Private Sub AplicarModo()
+    Dim m As String, usaXY As Boolean
+    m = Modo
+    usaXY = (m = "EXAMPLE" Or m = "MANUAL")
+    mAtualizando = True
+    If m = "EXAMPLE" Then
+        PreencherCampos mEx: mMestre = "W"
+    ElseIf m = "MANUAL" Then
+        PreencherCampos mMan
+    End If
+    mAtualizando = False
+    txtX.Enabled = usaXY: txtY.Enabled = usaXY
+    txtW.Enabled = usaXY: txtH.Enabled = usaXY
+    chkTravar.Enabled = usaXY
+    cboAncH.Enabled = Not usaXY: cboAncV.Enabled = Not usaXY
+    If usaXY And chkTravar.Value Then Recalcular
+End Sub
+
+Private Sub PreencherCampos(v() As Double)
+    txtX.Text = Fmt(v(0)): txtY.Text = Fmt(v(1))
+    txtW.Text = Fmt(v(2)): txtH.Text = Fmt(v(3))
+End Sub
+
+' ---- same behaviour as CorelDRAW: with locked proportions, one field drives the other ----
+Private Sub txtW_Change()
+    If mAtualizando Then Exit Sub
+    mMestre = "W"
+    If chkTravar.Value Then Recalcular
+End Sub
+
+Private Sub txtH_Change()
+    If mAtualizando Then Exit Sub
+    mMestre = "H"
+    If chkTravar.Value Then Recalcular
+End Sub
+
+Private Sub chkTravar_Click()
+    If mAtualizando Then Exit Sub
+    If chkTravar.Value Then Recalcular
+End Sub
+
+Private Sub Recalcular()
+    Dim v As Double
+    If mRazao <= 0 Then Exit Sub
+    mAtualizando = True
+    If mMestre = "H" Then
+        If LerCampo(txtH.Text, v) Then txtW.Text = Fmt(v / mRazao)
+    Else
+        If LerCampo(txtW.Text, v) Then txtH.Text = Fmt(v * mRazao)
+    End If
+    mAtualizando = False
+End Sub
+
+Private Sub btnOK_Click()
+    If Modo = "EXAMPLE" Or Modo = "MANUAL" Then
+        If Not LerCampo(txtX.Text, ValX) Then Aviso "X": Exit Sub
+        If Not LerCampo(txtY.Text, ValY) Then Aviso "Y": Exit Sub
+        If Not LerCampo(txtW.Text, ValW) Or ValW <= 0 Then Aviso T("L", "W"): Exit Sub
+        If Not LerCampo(txtH.Text, ValH) Or ValH <= 0 Then Aviso T("A", "H"): Exit Sub
+    End If
+    Travado = chkTravar.Value
+    OK = True
+    Me.Hide
+End Sub
+
+Private Sub btnCancelar_Click()
+    OK = False
+    Me.Hide
+End Sub
+
+Private Sub UserForm_QueryClose(Cancel As Integer, CloseMode As Integer)
+    If CloseMode = vbFormControlMenu Then
+        Cancel = True
+        OK = False
+        Me.Hide
+    End If
+End Sub
+
+' ---- helpers ----
+Private Function LerCampo(s As String, ByRef v As Double) As Boolean
+    Dim s2 As String, i As Long, c As String
+    s2 = Replace(Trim$(s), ",", ".")
+    If Len(s2) = 0 Then Exit Function
+    For i = 1 To Len(s2)
+        c = Mid$(s2, i, 1)
+        If InStr("0123456789.-", c) = 0 Then Exit Function
+    Next i
+    v = Val(s2)
+    LerCampo = True
+End Function
+
+Private Sub Aviso(campo As String)
+    MsgBox T("Valor invalido em ", "Invalid value in ") & campo & ".", vbExclamation
+End Sub
+
+Private Sub Rotulo(txt As String, l As Single, tp As Single, w As Single)
+    With Me.Controls.Add("Forms.Label.1")
+        .Caption = txt: .Left = l: .Top = tp + 2: .Width = w: .Height = 14
+    End With
+End Sub
+
+Private Function Campo(nome As String, l As Single, tp As Single) As MSForms.TextBox
+    Dim c As MSForms.TextBox
+    Set c = Me.Controls.Add("Forms.TextBox.1", nome)
+    c.Left = l: c.Top = tp: c.Width = 90: c.Height = 18
+    Set Campo = c
+End Function
+
+Private Function Lista(nome As String, l As Single, tp As Single, w As Single) As MSForms.ComboBox
+    Dim c As MSForms.ComboBox
+    Set c = Me.Controls.Add("Forms.ComboBox.1", nome)
+    c.Left = l: c.Top = tp: c.Width = w: c.Height = 18
+    c.Style = fmStyleDropDownList
+    Set Lista = c
+End Function
